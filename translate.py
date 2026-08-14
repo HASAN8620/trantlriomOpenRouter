@@ -19,8 +19,6 @@ output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 15
 
-# OpenRouter Free Router - Auto-selects the best active free model
-# Ya aap explicitly "meta-llama/llama-3.3-70b-instruct:free" bhi use kar sakte hain.
 MODEL_NAME = "openrouter/free" 
 
 curr_key_idx = 0
@@ -194,4 +192,4 @@ if os.path.exists(input_file):
             
     print(f"\n🎉 BOOM! SUCCESS! {count} lines OpenRouter se Perfect Roman Urdu mein convert ho gayin!", flush=True)
 else:
-    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)s
+    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)
