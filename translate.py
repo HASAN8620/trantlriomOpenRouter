@@ -18,7 +18,7 @@ input_file = "american.oxt"
 output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 20
-MODEL_NAME = "llama-3.1-8b-instant"  # Super Fast Model
+MODEL_NAME = "llama-3.1-8b-instant"
 
 curr_key_idx = 0
 
@@ -153,7 +153,7 @@ if os.path.exists(input_file):
                         json.dump(saved_data, cf, ensure_ascii=False, indent=2)
                     print("✅ [Batch Saved Successfully]", flush=True)
                 pending_batch = {}
-                time.sleep(1.0) # Lightning Speed!
+                time.sleep(1.0)
 
     if pending_batch:
         res = translate_batch(pending_batch)
@@ -175,6 +175,6 @@ if os.path.exists(input_file):
                 else: out.write(line)
             else: out.write(line)
             
-    print(f"\n🎉 BOOM! SUCCESS! {count} lines converted in ~30 mins!", flush=True)
+    print(f"\n🎉 BOOM! SUCCESS! {count} lines converted!", flush=True)
 else:
-    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)vcqnb1n3
+    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)
