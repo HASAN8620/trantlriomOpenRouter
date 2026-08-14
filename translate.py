@@ -4,46 +4,50 @@ import json
 import time
 import requests
 
-# 1. Load OpenRouter API Key
-API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+# 1. Load 6 OpenRouter API Keys
+KEYS_ENV = os.environ.get("OPENROUTER_API_KEYS", "")
+API_KEYS = [k.strip() for k in KEYS_ENV.split(",") if k.strip()]
 
-if not API_KEY:
-    print("❌ Error: OPENROUTER_API_KEY Secret nahi mila. GitHub Settings check karein.")
+if not API_KEYS:
+    print("❌ Error: OPENROUTER_API_KEYS Secret nahi mila. GitHub Settings check karein.")
     exit(1)
 
-print("✅ OpenRouter API Key loaded successfully!")
+print(f"✅ Total {len(API_KEYS)} OpenRouter API Keys loaded successfully! 🚀")
 
 input_file = "american.oxt"
 output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
 batch_size = 15
 
-# 🚀 Top Free Model on OpenRouter for Urdu Translation
-MODEL_NAME = "google/gemma-2-9b-it:free"  # Ya "meta-llama/llama-3.3-70b-instruct:free"
+# OpenRouter Free Router - Auto-selects the best active free model
+# Ya aap explicitly "meta-llama/llama-3.3-70b-instruct:free" bhi use kar sakte hain.
+MODEL_NAME = "openrouter/free" 
 
-# 2. Natural Urdu Prompt
+curr_key_idx = 0
+
+# 2. Easy Natural Pakistani Roman Urdu System Prompt
 SYSTEM_PROMPT = """You are a native Pakistani video game localization expert for Max Payne 3.
-Translate English game dialogues into NATURAL, FLUENT, and DRAMATIC Pakistani Roman Urdu (WhatsApp style).
+Translate English game dialogues into NATURAL, EASY, FLUENT, and DRAMATIC Pakistani Roman Urdu (WhatsApp style).
 
 STRICT OUTPUT FORMAT:
-Respond ONLY with a valid JSON object matching the exact input keys. No explanation, no markdown tags.
+Respond ONLY with a valid JSON object matching the exact input keys. Do not add explanations or markdown text wrappers outside the JSON.
 
-RULES:
-1. Use easy, natural Pakistani spoken Urdu (WhatsApp style).
+TRANSLATION RULES:
+1. Translate into natural spoken Pakistani dialogue tone (NO LITERAL WORD-FOR-WORD TRANSLATION).
 2. STRICTLY FORBIDDEN HINDI WORDS:
-   - NEVER 'shareer' -> use 'jism' or 'body'
-   - NEVER 'samay' -> use 'waqt' or 'time'
-   - NEVER 'dard nivaarak' -> use 'painkillers'
-   - NEVER 'swasthya' -> use 'sehat'
-   - NEVER 'karya' -> use 'kaam'
-   - NEVER 'bhavnaon' -> use 'ehsaas'
-   - NEVER 'khojne' -> use 'dhoondne'
-   - NEVER 'vishesh' -> use 'khaas'
-   - NEVER 'vah' -> use 'woh'
-   - NEVER 'ladaai' -> use 'larai'
-   - NEVER 'badi' / 'bada' -> use 'bari' / 'bara'
-3. Keep gaming words in English: 'painkillers', 'ammo', 'guns', 'checkpoint', 'comfort zone', 'health', 'plan B'.
-4. Keep all formatting tags (~z~, ~w~, ~n~, ~a~, ~g~, ~b~) EXACTLY as they appear."""
+   - NEVER use 'shareer' -> use 'jism' or 'body'
+   - NEVER use 'samay' -> use 'waqt' or 'time'
+   - NEVER use 'dard nivaarak' -> use 'painkillers'
+   - NEVER use 'swasthya' -> use 'sehat'
+   - NEVER use 'karya' -> use 'kaam'
+   - NEVER use 'bhavnaon' -> use 'ehsaas'
+   - NEVER use 'khojne' -> use 'dhoondne'
+   - NEVER use 'vishesh' -> use 'khaas'
+   - NEVER use 'vah' -> use 'woh'
+   - NEVER use 'ladaai' -> use 'larai'
+   - NEVER use 'badi' / 'bada' -> use 'bari' / 'bara'
+3. KEEP GAMING TERMS: Keep 'painkillers', 'ammo', 'guns', 'checkpoint', 'comfort zone', 'health', 'plan B' in English.
+4. FORMATTING TAGS: Keep all formatting tags (~z~, ~w~, ~n~, ~a~, ~g~, ~b~) EXACTLY as they appear."""
 
 # 3. Fail-Safe Python Auto-Corrector
 HINDI_TO_URDU = {
@@ -69,8 +73,9 @@ def clean_hindi_words(text):
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     return text
 
-# 4. OpenRouter API Request
+# 4. Translation Function with Key Rotation
 def translate_batch(batch_dict):
+    global curr_key_idx
     url = "https://openrouter.ai/api/v1/chat/completions"
     
     prompt = f"Translate the following JSON values to natural Pakistani Roman Urdu. Return a JSON object with the same keys:\n{json.dumps(batch_dict, ensure_ascii=False)}"
@@ -84,14 +89,16 @@ def translate_batch(batch_dict):
         "temperature": 0.2
     }
     
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com", # Required by OpenRouter
-        "X-Title": "Max Payne Translator"
-    }
+    max_attempts = len(API_KEYS) * 3
     
-    for attempt in range(5):
+    for attempt in range(max_attempts):
+        headers = {
+            "Authorization": f"Bearer {API_KEYS[curr_key_idx]}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com",
+            "X-Title": "Max Payne Translator"
+        }
+        
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=60)
             
@@ -110,11 +117,12 @@ def translate_batch(batch_dict):
                         cleaned_parsed = {k: clean_hindi_words(v) for k, v in parsed.items()}
                         return cleaned_parsed
                 except json.JSONDecodeError:
-                    print(f"\n⚠️ JSON Parse Error. Retrying...", end="", flush=True)
+                    print(f"\n⚠️ Format Error. Retrying...", end="", flush=True)
                     
-            elif response.status_code == 429:
-                print(f"\n⚠️ Rate Limit! 10 seconds wait...", end="", flush=True)
-                time.sleep(10)
+            elif response.status_code in [429, 402]:
+                print(f"\n⚠️ Key #{curr_key_idx + 1} limit hit/paused. Switching to next key...", end="", flush=True)
+                curr_key_idx = (curr_key_idx + 1) % len(API_KEYS)
+                time.sleep(2)
                 continue
             else:
                 print(f"\n⚠️ ERROR {response.status_code}: {response.text[:100]}", flush=True)
@@ -122,9 +130,10 @@ def translate_batch(batch_dict):
         except Exception as e:
             print(f"\n⚠️ Connection Error: {str(e)[:50]}...", end="", flush=True)
             
-        time.sleep(3)
+        curr_key_idx = (curr_key_idx + 1) % len(API_KEYS)
+        time.sleep(2)
         
-    print("\n❌ OpenRouter Error.")
+    print("\n❌ Saari keys thak gayin. Process pause kar rahe hain.")
     exit(1)
 
 # 5. Main Processing Logic
@@ -161,7 +170,7 @@ if os.path.exists(input_file):
                         json.dump(saved_data, cf, ensure_ascii=False, indent=2)
                     print("✅ [Batch Saved Successfully]", flush=True)
                 pending_batch = {}
-                time.sleep(2.5)
+                time.sleep(2.0)
 
     if pending_batch:
         res = translate_batch(pending_batch)
@@ -183,6 +192,6 @@ if os.path.exists(input_file):
                 else: out.write(line)
             else: out.write(line)
             
-    print(f"\n🎉 BOOM! SUCCESS! {count} lines OpenRouter Free Model se convert ho gayin!", flush=True)
+    print(f"\n🎉 BOOM! SUCCESS! {count} lines OpenRouter se Perfect Roman Urdu mein convert ho gayin!", flush=True)
 else:
-    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)
+    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)s
