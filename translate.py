@@ -4,50 +4,38 @@ import json
 import time
 import requests
 
-# 1. Load 6 OpenRouter API Keys
-KEYS_ENV = os.environ.get("OPENROUTER_API_KEYS", "")
+# 1. Groq API Keys Loading
+KEYS_ENV = os.environ.get("GROQ_API_KEYS", "")
 API_KEYS = [k.strip() for k in KEYS_ENV.split(",") if k.strip()]
 
 if not API_KEYS:
-    print("❌ Error: OPENROUTER_API_KEYS Secret nahi mila. GitHub Settings check karein.")
+    print("❌ Error: GROQ_API_KEYS Secret nahi mila.")
     exit(1)
 
-print(f"✅ Total {len(API_KEYS)} OpenRouter API Keys loaded successfully! 🚀")
+print(f"✅ Total {len(API_KEYS)} Groq API Keys loaded successfully! 🚀")
 
 input_file = "american.oxt"
 output_file = "american_roman.oxt"
 checkpoint_file = "translation_checkpoint.json"
-batch_size = 15
-
-MODEL_NAME = "openrouter/free" 
+batch_size = 20
+MODEL_NAME = "llama-3.1-8b-instant"  # Super Fast Model
 
 curr_key_idx = 0
 
-# 2. Easy Natural Pakistani Roman Urdu System Prompt
+# 2. System Prompt
 SYSTEM_PROMPT = """You are a native Pakistani video game localization expert for Max Payne 3.
-Translate English game dialogues into NATURAL, EASY, FLUENT, and DRAMATIC Pakistani Roman Urdu (WhatsApp style).
+Translate English game dialogues into natural, dramatic Pakistani Roman Urdu (WhatsApp style).
 
 STRICT OUTPUT FORMAT:
-Respond ONLY with a valid JSON object matching the exact input keys. Do not add explanations or markdown text wrappers outside the JSON.
+You MUST respond with ONLY a valid JSON object matching the exact input keys.
 
-TRANSLATION RULES:
-1. Translate into natural spoken Pakistani dialogue tone (NO LITERAL WORD-FOR-WORD TRANSLATION).
-2. STRICTLY FORBIDDEN HINDI WORDS:
-   - NEVER use 'shareer' -> use 'jism' or 'body'
-   - NEVER use 'samay' -> use 'waqt' or 'time'
-   - NEVER use 'dard nivaarak' -> use 'painkillers'
-   - NEVER use 'swasthya' -> use 'sehat'
-   - NEVER use 'karya' -> use 'kaam'
-   - NEVER use 'bhavnaon' -> use 'ehsaas'
-   - NEVER use 'khojne' -> use 'dhoondne'
-   - NEVER use 'vishesh' -> use 'khaas'
-   - NEVER use 'vah' -> use 'woh'
-   - NEVER use 'ladaai' -> use 'larai'
-   - NEVER use 'badi' / 'bada' -> use 'bari' / 'bara'
-3. KEEP GAMING TERMS: Keep 'painkillers', 'ammo', 'guns', 'checkpoint', 'comfort zone', 'health', 'plan B' in English.
-4. FORMATTING TAGS: Keep all formatting tags (~z~, ~w~, ~n~, ~a~, ~g~, ~b~) EXACTLY as they appear."""
+RULES:
+1. Translate into natural spoken Pakistani dialogue tone.
+2. Vocabulary: 'waqt', 'jism', 'painkillers', 'sehat', 'kaam', 'dhoondne', 'larai', 'bari'.
+3. Keep gaming terms in English: 'painkillers', 'ammo', 'guns', 'checkpoint', 'comfort zone', 'health', 'plan B'.
+4. Keep all formatting tags (~z~, ~w~, ~n~, ~a~, ~g~, ~b~) EXACTLY as they appear."""
 
-# 3. Fail-Safe Python Auto-Corrector
+# 3. Python Auto-Corrector (Hinglish/Hindi Elimination)
 HINDI_TO_URDU = {
     r'\bsamay\b': 'waqt',
     r'\bshareer\b': 'jism',
@@ -71,38 +59,35 @@ def clean_hindi_words(text):
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     return text
 
-# 4. Translation Function with Key Rotation
+# 4. Fast Translation Function
 def translate_batch(batch_dict):
     global curr_key_idx
-    url = "https://openrouter.ai/api/v1/chat/completions"
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    prompt = f"Translate these JSON values to natural Pakistani Roman Urdu:\n{json.dumps(batch_dict, ensure_ascii=False)}"
     
-    prompt = f"Translate the following JSON values to natural Pakistani Roman Urdu. Return a JSON object with the same keys:\n{json.dumps(batch_dict, ensure_ascii=False)}"
+    max_attempts = len(API_KEYS) * 3 
     
-    payload = {
-        "model": MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.2
-    }
-    
-    max_attempts = len(API_KEYS) * 3
-    
-    for attempt in range(max_attempts):
+    for attempt in range(max_attempts): 
+        payload = {
+            "model": MODEL_NAME, 
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT}, 
+                {"role": "user", "content": prompt}
+            ], 
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2
+        }
+        
         headers = {
             "Authorization": f"Bearer {API_KEYS[curr_key_idx]}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com",
-            "X-Title": "Max Payne Translator"
+            "Content-Type": "application/json"
         }
         
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
             
             if response.status_code == 200:
-                res_data = response.json()
-                content = res_data['choices'][0]['message']['content']
+                content = response.json()['choices'][0]['message']['content']
                 
                 try:
                     clean_content = content.strip()
@@ -117,11 +102,12 @@ def translate_batch(batch_dict):
                 except json.JSONDecodeError:
                     print(f"\n⚠️ Format Error. Retrying...", end="", flush=True)
                     
-            elif response.status_code in [429, 402]:
-                print(f"\n⚠️ Key #{curr_key_idx + 1} limit hit/paused. Switching to next key...", end="", flush=True)
+            elif response.status_code in [429, 413]:
+                print(f"\n⚠️ Rate Limit! Key #{curr_key_idx + 1} pause. Switching key...", end="", flush=True)
                 curr_key_idx = (curr_key_idx + 1) % len(API_KEYS)
                 time.sleep(2)
                 continue
+                
             else:
                 print(f"\n⚠️ ERROR {response.status_code}: {response.text[:100]}", flush=True)
                 
@@ -129,22 +115,21 @@ def translate_batch(batch_dict):
             print(f"\n⚠️ Connection Error: {str(e)[:50]}...", end="", flush=True)
             
         curr_key_idx = (curr_key_idx + 1) % len(API_KEYS)
-        time.sleep(2)
+        time.sleep(1)
         
-    print("\n❌ Saari keys thak gayin. Process pause kar rahe hain.")
+    print("\n❌ Process paused.")
     exit(1)
 
 # 5. Main Processing Logic
 if os.path.exists(input_file):
     print(f"📁 Reading file: {input_file}", flush=True)
-    
     saved_data = {}
     if os.path.exists(checkpoint_file):
         with open(checkpoint_file, "r", encoding="utf-8") as f: 
             try:
                 saved_data = json.load(f)
                 saved_data = {k: clean_hindi_words(v) for k, v in saved_data.items()}
-                print(f"🔄 Checkpoint Loaded: {len(saved_data)} lines pehle se completed hain.", flush=True)
+                print(f"🔄 Checkpoint Loaded: {len(saved_data)} lines.", flush=True)
             except Exception:
                 saved_data = {}
 
@@ -160,7 +145,7 @@ if os.path.exists(input_file):
                 pending_batch[k] = line.split('=', 1)[1].strip()
                 
             if len(pending_batch) >= batch_size:
-                print(f"\n🚀 Translating via OpenRouter... ({len(saved_data)}/{total})", flush=True)
+                print(f"\n🚀 Fast Translating... ({len(saved_data)}/{total})", flush=True)
                 res = translate_batch(pending_batch)
                 if res:
                     saved_data.update(res)
@@ -168,7 +153,7 @@ if os.path.exists(input_file):
                         json.dump(saved_data, cf, ensure_ascii=False, indent=2)
                     print("✅ [Batch Saved Successfully]", flush=True)
                 pending_batch = {}
-                time.sleep(2.0)
+                time.sleep(1.0) # Lightning Speed!
 
     if pending_batch:
         res = translate_batch(pending_batch)
@@ -190,6 +175,6 @@ if os.path.exists(input_file):
                 else: out.write(line)
             else: out.write(line)
             
-    print(f"\n🎉 BOOM! SUCCESS! {count} lines OpenRouter se Perfect Roman Urdu mein convert ho gayin!", flush=True)
+    print(f"\n🎉 BOOM! SUCCESS! {count} lines converted in ~30 mins!", flush=True)
 else:
-    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)
+    print(f"❌ Error: '{input_file}' file nahi mili.", flush=True)vcqnb1n3
