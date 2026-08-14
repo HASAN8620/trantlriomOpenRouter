@@ -2,6 +2,9 @@ name: OpenRouter Translation Runner
 
 on:
   workflow_dispatch:
+  schedule:
+    # Har 6 ghante baad automatically chalega aur bacha hua kaam Resume karega
+    - cron: '0 */6 * * *'
 
 permissions:
   contents: write
@@ -9,7 +12,7 @@ permissions:
 jobs:
   translate:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 350 # 6 ghante se thora pehle safe exit
 
     steps:
       - name: Checkout Repository
@@ -28,8 +31,8 @@ jobs:
           OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
         run: python translate.py
 
-      # 🚀 THIS STEP SAVES PROGRESS EVEN IF SCRIPT FAILS OR CANCELS
-      - name: Commit and Push Checkpoint (Resume Data)
+      # 🚀 Timeout ya Error aane par progress repo par commit ho jayegi
+      - name: Commit and Push Checkpoint
         if: always()
         run: |
           git config --global user.name 'github-actions[bot]'
