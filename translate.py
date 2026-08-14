@@ -21,7 +21,7 @@ INPUT_FILE = "american.oxt"
 OUTPUT_FILE = "american_roman.oxt"
 CHECKPOINT_FILE = "translation_checkpoint.json"
 BATCH_SIZE = 15  # Optimal for 31B models to prevent context cutoff
-MODEL_NAME = "google/gemma-2-9b-it:free"
+MODEL_NAME = "google/gemma-4-31b-it:free"
 curr_key_idx = 0
 
 # ==========================================
